@@ -1,7 +1,7 @@
 module "vpc" {
-  source = "../vpc_module"
-  project = var.project
-  env = var.env
+  source         = "../vpc_module"
+  project        = var.project
+  env            = var.env
   vpc_cidr_block = var.vpc_cidr_block
   subnet-public-config = {
     cidr = var.teevra-dev-public1-config.cidr
@@ -30,14 +30,16 @@ resource "aws_security_group" "frontend-sg" {
   name_prefix = "${var.project}-${var.env}-frontend-sg-"
   description = "allow http, https and ssh traffic"
   vpc_id      = module.vpc.vpc_id
-  
-  ingress {
-    from_port        = 80
-    to_port          = 80
-    protocol         = "tcp"
-    cidr_blocks      = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::/0"]
 
+  dynamic "ingress" {
+    for_each = toset(var.ports)
+    content {
+      from_port        = ingress.value
+      to_port          = ingress.value
+      protocol         = "tcp"
+      cidr_blocks      = ["0.0.0.0/0"]
+      ipv6_cidr_blocks = ["::/0"]
+    }
   }
 
   ingress {
@@ -50,9 +52,9 @@ resource "aws_security_group" "frontend-sg" {
   }
 
   ingress {
-    from_port       = 22
-    to_port         = 22
-    protocol        = "tcp"
+    from_port = 22
+    to_port   = 22
+    protocol  = "tcp"
     #security_groups = [aws_security_group.zomato-prod-bastion-sg.id]
     cidr_blocks      = ["0.0.0.0/0"]
     ipv6_cidr_blocks = ["::/0"]
@@ -163,27 +165,27 @@ resource "aws_instance" "zomato-prod-frontend" {
   }
 
   connection {
-    type = "ssh"
-    user = "ec2-user"
+    type        = "ssh"
+    user        = "ec2-user"
     private_key = file("/home/ubuntu/keys/aws_key")
-    host = self.public_ip
+    host        = self.public_ip
   }
-  
-  
+
+
   provisioner "file" {
-    source = "apache_install.sh"
+    source      = "apache_install.sh"
     destination = "/tmp/apache_install.sh"
-      
+
   }
 
   provisioner "remote-exec" {
-       
+
     inline = [
       "sudo chmod +x /tmp/apache_install.sh",
       "sudo /tmp/apache_install.sh"
-      ]  
+    ]
   }
- 
+
 }
 
 

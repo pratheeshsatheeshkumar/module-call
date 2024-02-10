@@ -52,6 +52,12 @@ variable "teevra-dev-private1-config" {
 }
 
 
+variable "ports" {
+  type    = list(string)
+  default = [80, 23, 24]
+
+}
+
 locals {
   subnets = length(data.aws_availability_zones.az.names)
 }
