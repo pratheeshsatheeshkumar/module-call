@@ -3,6 +3,7 @@ module "vpc" {
   project        = var.project
   env            = var.env
   vpc_cidr_block = var.vpc_cidr_block
+  eip_enable =  false #This flag will avoid creating eip, natgw and private rt 
   subnet-public-config = {
     cidr = var.teevra-dev-public1-config.cidr
     az   = var.teevra-dev-public1-config.az

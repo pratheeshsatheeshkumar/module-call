@@ -41,7 +41,9 @@ resource "aws_subnet" "private" {
 }
 
 resource "aws_eip" "zomato-prod-eip-nat" {
+  count = var.eip_enable ? 1 : 0
   domain = "vpc"
+  
   tags = {
     "Name" = "${var.project}-${var.env}-eip-nat"
   }
@@ -49,16 +51,18 @@ resource "aws_eip" "zomato-prod-eip-nat" {
 
 
 resource "aws_nat_gateway" "zomato-prod-natgw" {
-  allocation_id = aws_eip.zomato-prod-eip-nat.id
-  subnet_id     = aws_subnet.public.id
+  count = var.eip_enable ? 1 : 0
 
+  allocation_id = aws_eip.zomato-prod-eip-nat[0].id
+  subnet_id     = aws_subnet.public.id
+  
   tags = {
     Name = "${var.project}-${var.env}-nat_gw"
   }
 
   # To ensure proper ordering, it is recommended to add an explicit dependency
   # on the Internet Gateway for the VPC.
-  depends_on = [aws_internet_gateway.igw]
+  depends_on = [aws_eip.zomato-prod-eip-nat[0]]
 }
 
 resource "aws_route_table" "zomato-prod-rt-public" {
@@ -77,11 +81,12 @@ resource "aws_route_table" "zomato-prod-rt-public" {
 
 
 resource "aws_route_table" "zomato-prod-rt-private" {
+  count = var.eip_enable ? 1 : 0
   vpc_id = aws_vpc.zomato-prod-vpc.id
 
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_nat_gateway.zomato-prod-natgw.id
+    gateway_id = aws_nat_gateway.zomato-prod-natgw[0].id
   }
 
   tags = {
@@ -100,6 +105,7 @@ resource "aws_route_table_association" "zomato-prod-rt_subnet-assoc2" {
 }
 
 resource "aws_route_table_association" "zomato-prod-rt_subnet-assoc3" {
+  count = var.eip_enable ? 1 : 0
   subnet_id      = aws_subnet.private.id
-  route_table_id = aws_route_table.zomato-prod-rt-private.id
+  route_table_id = aws_route_table.zomato-prod-rt-private[0].id
 }

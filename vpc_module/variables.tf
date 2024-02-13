@@ -4,6 +4,11 @@ variable "project" {
 variable "env" {
   
 }
+
+variable "eip_enable" {
+  type = bool
+  default = true
+}
 variable "vpc_cidr_block" {}
 variable "subnet-public-config" {
   type = map(any)
