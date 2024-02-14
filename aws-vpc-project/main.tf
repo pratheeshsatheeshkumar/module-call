@@ -1,5 +1,5 @@
 module "vpc" {
-  source         = "../vpc_module"
+  source         = "./modules/vpc_module"
   project        = var.project
   env            = var.env
   vpc_cidr_block = var.vpc_cidr_block
@@ -151,45 +151,14 @@ resource "aws_security_group" "backend-sg" {
   }
 }
 
-
-# Instance creation of zomato-prod-frontend
-
-resource "aws_instance" "zomato-prod-frontend" {
-  ami                         = var.instance_ami
-  associate_public_ip_address = true
-  subnet_id                   = module.vpc.public
-  instance_type               = var.instance_type
-  key_name                    = "${var.project}-${var.env}-keypair"
-  vpc_security_group_ids      = [aws_security_group.frontend-sg.id]
-  tags = {
-    "Name" = "${var.project}-${var.env}-frontend"
-  }
-
-  connection {
-    type        = "ssh"
-    user        = "ec2-user"
-    private_key = file("/home/ubuntu/keys/aws_key")
-    host        = self.public_ip
-  }
-
-
-  provisioner "file" {
-    source      = "apache_install.sh"
-    destination = "/tmp/apache_install.sh"
-
-  }
-
-  provisioner "remote-exec" {
-
-    inline = [
-      "sudo chmod +x /tmp/apache_install.sh",
-      "sudo /tmp/apache_install.sh"
-    ]
-  }
-
-
-
+module "ec2" {
+  source         = "./modules/ec2"
+  project        = var.project
+  env            = var.env
+  vpc_cidr_block = var.vpc_cidr_block
 }
+
+
 
 resource "null_resource" "write_publicip" {
 
