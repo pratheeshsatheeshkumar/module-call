@@ -23,5 +23,21 @@ variable "instance_type" {
   default = "t2.micro"
 }
 variable "sg_id" {
+  type = string
+}
+
+variable "subnet_id" {
   
+}
+
+variable "instance_count" {
+  
+}
+
+variable "associate_public_ip_address" {
+  
+}
+
+variable "instance_name" {
+ 
 }

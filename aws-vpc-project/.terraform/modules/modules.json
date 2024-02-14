@@ -1,1 +1,1 @@
-{"Modules":[{"Key":"","Source":"","Dir":"."},{"Key":"vpc","Source":"./modules/vpc_module","Dir":"modules/vpc_module"}]}
+{"Modules":[{"Key":"","Source":"","Dir":"."},{"Key":"ec2","Source":"./modules/ec2","Dir":"modules/ec2"},{"Key":"ec2-private","Source":"./modules/ec2","Dir":"modules/ec2"},{"Key":"vpc","Source":"./modules/vpc_module","Dir":"modules/vpc_module"}]}

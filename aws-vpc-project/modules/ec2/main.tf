@@ -3,16 +3,17 @@
 # Instance creation of zomato-prod-frontend
 
 resource "aws_instance" "zomato-prod-frontend" {
+  count = var.instance_count  
   ami                         = var.instance_ami
-  associate_public_ip_address = true
-  subnet_id                   = module.vpc.public
+  associate_public_ip_address = var.associate_public_ip_address
+  subnet_id                   = var.subnet_id
   instance_type               = var.instance_type
   key_name                    = "${var.project}-${var.env}-keypair"
   vpc_security_group_ids      = [var.sg_id]
   tags = {
-    "Name" = "${var.project}-${var.env}-frontend"
+    "Name" = "${var.project}-${var.env}-${var.instance_name}"
   }
-
+/*
   connection {
     type        = "ssh"
     user        = "ec2-user"
@@ -22,7 +23,7 @@ resource "aws_instance" "zomato-prod-frontend" {
 
 
   provisioner "file" {
-    source      = "apache_install.sh"
+    source      = "home/ubuntu/module-call/aws-vpc-project/apache_install.sh"
     destination = "/tmp/apache_install.sh"
 
   }
@@ -34,7 +35,7 @@ resource "aws_instance" "zomato-prod-frontend" {
       "sudo /tmp/apache_install.sh"
     ]
   }
-
+*/
 
 
 }
