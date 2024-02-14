@@ -198,7 +198,7 @@ triggers = {
 }
 
   provisioner "local-exec" {
-    command = "echo ${aws_instance.zomato-prod-frontend.public_ip} > out.txt"
+    command = "echo ssh -i /home/ubuntu/keys/aws_key ec2-user@${aws_instance.zomato-prod-frontend.public_ip} > out.txt"
   }
 #or we can use the command "terraform output > out.txt"
 
