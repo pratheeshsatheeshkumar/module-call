@@ -187,6 +187,20 @@ resource "aws_instance" "zomato-prod-frontend" {
     ]
   }
 
+
+
 }
 
+resource "null_resource" "write_publicip" {
 
+triggers = {
+  instance_id = aws_instance.zomato-prod-frontend.public_ip
+}
+
+  provisioner "local-exec" {
+    command = "echo ${aws_instance.zomato-prod-frontend.public_ip} > out.txt"
+  }
+#or we can use the command "terraform output > out.txt"
+
+  
+}
