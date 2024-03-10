@@ -3,7 +3,7 @@ module "vpc" {
   project        = var.project
   env            = var.env
   vpc_cidr_block = var.vpc_cidr_block
-  eip_enable     = true #This flag will avoid creating eip, natgw and private rt 
+  eip_enable     = false #This flag will avoid creating eip, natgw and private rt 
   subnet-public-config = {
     cidr = var.teevra-dev-public1-config.cidr
     az   = var.teevra-dev-public1-config.az
@@ -153,7 +153,7 @@ module "ec2" {
   instance_name = "frontend-server"
   sg_id     = aws_security_group.frontend-sg.id
   subnet_id = module.vpc.public
-  instance_count = 2
+  instance_count = 1
   associate_public_ip_address = true
 
 }
@@ -164,7 +164,7 @@ module "ec2-private" {
   instance_name = "backend-server"
   sg_id     = aws_security_group.backend-sg.id
   subnet_id = module.vpc.private
-  instance_count = 2
+  instance_count = 0
   associate_public_ip_address = false
 
 }

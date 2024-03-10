@@ -8,6 +8,29 @@ resource "aws_instance" "zomato-prod-frontend" {
   associate_public_ip_address = var.associate_public_ip_address
   subnet_id                   = var.subnet_id
   instance_type               = var.instance_type
+  user_data = <<EOF
+  #!/bin/bash
+
+
+echo "ClientAliveInterval 60" >> /etc/ssh/sshd_config
+echo "LANG=en_US.utf-8" >> /etc/environment
+echo "LC_ALL=en_US.utf-8" >> /etc/environment
+
+
+yum install httpd php git amazon-efs-utils -y
+systemctl restart httpd.service
+
+git clone https://github.com/Fujikomalan/aws-elb-site.git  /var/website/
+cp -r  /var/website/*  /var/www/html/
+chown -R apache:apache /var/www/html/*
+
+
+systemctl restart httpd.service
+systemctl enable httpd.service
+
+
+EOF
+
   key_name                    = "${var.project}-${var.env}-keypair"
   vpc_security_group_ids      = [var.sg_id]
   tags = {
