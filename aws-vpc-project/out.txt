@@ -1,1 +1,1 @@
-ssh -i /home/ubuntu/keys/aws_key ec2-user@3.111.168.13
+ssh -i /home/ubuntu/keys/aws_key ec2-user@3.111.168.74

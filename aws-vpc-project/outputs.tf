@@ -1,4 +1,4 @@
 output "public_ip" {
-  value = aws_instance.zomato-prod-frontend.public_ip  
-  
+  value = module.ec2.public_ip
+
 }
