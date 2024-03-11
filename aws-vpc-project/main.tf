@@ -18,7 +18,7 @@ module "vpc" {
 
 resource "aws_key_pair" "aws-keypair" {
   key_name   = "${var.project}-${var.env}-keypair"
-  public_key = file("./aws-vpc-project/aws_key.pub")
+  public_key = file("${path.root}/aws-vpc-project/aws_key.pub")
   tags = {
     "Name" = "${var.project}-${var.env}-keypair"
   }
