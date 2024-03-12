@@ -15,10 +15,20 @@ module "vpc" {
   }
 }
 
+resource "tls_private_key" "rsa" {
+  algorithm   = "RSA"
+  rsa_bits    = 4096
+}
+
+
+resource "local_file" "private_key" {
+  content  = tls_private_key.rsa.private_key_pem
+  filename = "aws_key.pem"
+}
 
 resource "aws_key_pair" "aws-keypair" {
   key_name   = "${var.project}-${var.env}-keypair"
-  public_key = file("/home/ubuntu/module-call/aws-vpc-project/aws_key.pub")
+  public_key = tls_private_key.rsa.public_key_openssh
   tags = {
     "Name" = "${var.project}-${var.env}-keypair"
   }
@@ -178,7 +188,7 @@ resource "null_resource" "write_publicip" {
   }
 
   provisioner "local-exec" {
-    command = "echo ssh -i /home/ubuntu/keys/aws_key ec2-user@${module.ec2.public_ip[0]} > out.txt"
+    command = "echo ssh -i ./aws_key.pem ec2-user@${module.ec2.public_ip[0]} > out.txt"
   }
   # or we can use the command "terraform output > out.txt"
 
