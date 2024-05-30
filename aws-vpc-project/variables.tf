@@ -1,5 +1,5 @@
 variable "project" {
-  default     = "oorja"
+  default     = "nodeProject"
   description = "name of the project"
 
 }
@@ -11,7 +11,7 @@ variable "env" {
 }
 
 variable "region" {
-  default     = "ap-south-1"
+  default     = "ap-southeast-2"
   description = "aws region"
 }
 
@@ -27,34 +27,34 @@ variable "vpc_cidr_block" {
   default = "172.17.0.0/16"
 }
 
-variable "teevra-dev-public1-config" {
+variable "nodeproject-public1-config" {
   type = map(any)
   default = {
     cidr = "172.17.0.0/18"
-    az   = "ap-south-1a"
+    az   = var.region
   }
 }
 
-variable "teevra-dev-public2-config" {
+variable "nodeproject-public2-config" {
   type = map(any)
   default = {
     cidr = "172.17.64.0/18"
-    az   = "ap-south-1b"
+    az   = var.region
   }
 }
 
-variable "teevra-dev-private1-config" {
+variable "nodeproject-private1-config" {
   type = map(any)
   default = {
     cidr = "172.17.128.0/18"
-    az   = "ap-south-1b"
+    az   = var.region
   }
 }
 
 
 variable "ports" {
   type    = list(string)
-  default = [80, 23, 24]
+  default = [80, 23, 24, 443,22]
 
 }
 
