@@ -1,4 +1,4 @@
-resource "aws_vpc" "zomato-prod-vpc" {
+resource "aws_vpc" "nodeproject-vpc" {
   cidr_block           = var.vpc_cidr_block
   instance_tenancy     = "default"
   enable_dns_hostnames = true
@@ -10,7 +10,7 @@ resource "aws_vpc" "zomato-prod-vpc" {
 }
 
 resource "aws_internet_gateway" "igw" {
-  vpc_id = aws_vpc.zomato-prod-vpc.id
+  vpc_id = aws_vpc.nodeproject-vpc.id
 
   tags = {
     "Name" = "${var.project}-${var.env}-igw"
@@ -18,7 +18,7 @@ resource "aws_internet_gateway" "igw" {
 }
 
 resource "aws_subnet" "public" {
-  vpc_id                  = aws_vpc.zomato-prod-vpc.id
+  vpc_id                  = aws_vpc.nodeproject-vpc.id
   cidr_block              = var.subnet-public-config.cidr
   availability_zone       = var.subnet-public-config.az
   map_public_ip_on_launch = true
@@ -30,7 +30,7 @@ resource "aws_subnet" "public" {
 
 
 resource "aws_subnet" "private" {
-  vpc_id                  = aws_vpc.zomato-prod-vpc.id
+  vpc_id                  = aws_vpc.nodeproject-vpc.id
   cidr_block              = var.subnet-private-config.cidr
   availability_zone       = var.subnet-private-config.az
   map_public_ip_on_launch = false
@@ -40,7 +40,7 @@ resource "aws_subnet" "private" {
   }
 }
 
-resource "aws_eip" "zomato-prod-eip-nat" {
+resource "aws_eip" "nodeproject-eip-nat" {
   count = var.eip_enable ? 1 : 0
   domain = "vpc"
   
@@ -50,10 +50,10 @@ resource "aws_eip" "zomato-prod-eip-nat" {
 }
 
 
-resource "aws_nat_gateway" "zomato-prod-natgw" {
+resource "aws_nat_gateway" "nodeproject-natgw" {
   count = var.eip_enable ? 1 : 0
 
-  allocation_id = aws_eip.zomato-prod-eip-nat[0].id
+  allocation_id = aws_eip.nodeproject-eip-nat[0].id
   subnet_id     = aws_subnet.public.id
   
   tags = {
@@ -62,11 +62,11 @@ resource "aws_nat_gateway" "zomato-prod-natgw" {
 
   # To ensure proper ordering, it is recommended to add an explicit dependency
   # on the Internet Gateway for the VPC.
-  depends_on = [aws_eip.zomato-prod-eip-nat[0]]
+  depends_on = [aws_eip.nodeproject-eip-nat[0]]
 }
 
-resource "aws_route_table" "zomato-prod-rt-public" {
-  vpc_id = aws_vpc.zomato-prod-vpc.id
+resource "aws_route_table" "nodeproject-rt-public" {
+  vpc_id = aws_vpc.nodeproject-vpc.id
 
   route {
     cidr_block = "0.0.0.0/0"
@@ -80,13 +80,13 @@ resource "aws_route_table" "zomato-prod-rt-public" {
 }
 
 
-resource "aws_route_table" "zomato-prod-rt-private" {
+resource "aws_route_table" "nodeproject-rt-private" {
   count = var.eip_enable ? 1 : 0
-  vpc_id = aws_vpc.zomato-prod-vpc.id
+  vpc_id = aws_vpc.nodeproject-vpc.id
 
   route {
     cidr_block = "0.0.0.0/0"
-    gateway_id = aws_nat_gateway.zomato-prod-natgw[0].id
+    gateway_id = aws_nat_gateway.nodeproject-natgw[0].id
   }
 
   tags = {
@@ -94,18 +94,18 @@ resource "aws_route_table" "zomato-prod-rt-private" {
   }
 }
 
-resource "aws_route_table_association" "zomato-prod-rt_subnet-assoc1" {
+resource "aws_route_table_association" "nodeproject-rt_subnet-assoc1" {
   subnet_id      = aws_subnet.public.id
-  route_table_id = aws_route_table.zomato-prod-rt-public.id
+  route_table_id = aws_route_table.nodeproject-rt-public.id
 }
 
-resource "aws_route_table_association" "zomato-prod-rt_subnet-assoc2" {
+resource "aws_route_table_association" "nodeproject-rt_subnet-assoc2" {
   subnet_id      = aws_subnet.public.id
-  route_table_id = aws_route_table.zomato-prod-rt-public.id
+  route_table_id = aws_route_table.nodeproject-rt-public.id
 }
 
-resource "aws_route_table_association" "zomato-prod-rt_subnet-assoc3" {
+resource "aws_route_table_association" "nodeproject-rt_subnet-assoc3" {
   count = var.eip_enable ? 1 : 0
   subnet_id      = aws_subnet.private.id
-  route_table_id = aws_route_table.zomato-prod-rt-private[0].id
+  route_table_id = aws_route_table.nodeproject-rt-private[0].id
 }

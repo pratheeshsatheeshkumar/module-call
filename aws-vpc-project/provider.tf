@@ -14,15 +14,16 @@ terraform {
   }
 
   backend "s3" {
-    bucket = "terraform.pratheesh.online"
+    bucket = "nodeproject.pratheesh.online"
     key    = "terraform.tfstate"
-    region = "ap-south-1"
+    region = "ap-southeast-2"
 
   }
 
 }
+
 provider "aws" {
-  region = "ap-south-1"
+  region = var.region
 
   default_tags {
     tags = {

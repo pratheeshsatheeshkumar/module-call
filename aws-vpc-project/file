@@ -1,6 +1,0 @@
- 22:43:46 up 1 day, 10:17,  1 user,  load average: 0.00, 0.02, 0.00
-USER     TTY      FROM             LOGIN@   IDLE   JCPU   PCPU WHAT
-ubuntu   pts/1    -                Fri07    4days  0.13s  0.08s -bash
- 22:44:19 up 1 day, 10:18,  1 user,  load average: 0.00, 0.01, 0.00
-USER     TTY      FROM             LOGIN@   IDLE   JCPU   PCPU WHAT
-ubuntu   pts/1    -                Fri07    4days  0.13s  0.08s -bash
