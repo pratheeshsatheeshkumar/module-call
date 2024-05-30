@@ -4,14 +4,23 @@ module "vpc" {
   env            = var.env
   vpc_cidr_block = var.vpc_cidr_block
   eip_enable     = false #This flag will avoid creating eip, natgw and private rt 
-  subnet-public-config = {
+  subnet-public1-config = {
     cidr = var.nodeproject-public1-config.cidr
     az   = var.nodeproject-public1-config.az
   }
 
-  subnet-private-config = {
+  subnet-private1-config = {
     cidr = var.nodeproject-private1-config.cidr
     az   = var.nodeproject-private1-config.az
+  }
+    subnet-public2-config = {
+    cidr = var.nodeproject-public2-config.cidr
+    az   = var.nodeproject-public2-config.az
+  }
+
+  subnet-private2-config = {
+    cidr = var.nodeproject-private2-config.cidr
+    az   = var.nodeproject-private2-config.az
   }
 }
 
@@ -56,24 +65,6 @@ resource "aws_security_group" "frontend-sg" {
       cidr_blocks      = ["0.0.0.0/0"]
       ipv6_cidr_blocks = ["::/0"]
     }
-  }
-
-  ingress {
-    from_port        = 443
-    to_port          = 443
-    protocol         = "tcp"
-    cidr_blocks      = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::/0"]
-
-  }
-
-  ingress {
-    from_port = 22
-    to_port   = 22
-    protocol  = "tcp"
-    #security_groups = [aws_security_group.zomato-prod-bastion-sg.id]
-    cidr_blocks      = ["0.0.0.0/0"]
-    ipv6_cidr_blocks = ["::/0"]
   }
 
   egress {
@@ -167,7 +158,7 @@ module "ec2" {
   env                         = var.env
   instance_name               = "frontend-server"
   sg_id                       = aws_security_group.frontend-sg.id
-  subnet_id                   = module.vpc.public
+  subnet_id                   = module.vpc.public1
   instance_count              = 0
   associate_public_ip_address = true
 
@@ -178,7 +169,7 @@ module "ec2-private" {
   env                         = var.env
   instance_name               = "backend-server"
   sg_id                       = aws_security_group.backend-sg.id
-  subnet_id                   = module.vpc.private
+  subnet_id                   = module.vpc.private1
   instance_count              = 0
   associate_public_ip_address = false
 
@@ -200,63 +191,152 @@ module "ec2-private" {
 
 }
 */
+# Install kubectl and eksctl binaries
 
 resource "null_resource" "install_kubectl_eksctl" {
   provisioner "local-exec" {
-    command = <<-EOT
-      wget https://amazon-eks.s3.us-west-2.amazonaws.com/1.20.4/2021-04-12/bin/linux/amd64/kubectl && chmod +x ./kubectl &&  mv ./kubectl /usr/local/bin/
-      wget https://github.com/eksctl-io/eksctl/releases/download/v0.180.0/eksctl_Linux_amd64.tar.gz && tar xzf eksctl_Linux_amd64.tar.gz && chmod +x ./eksctl &&  mv ./eksctl /usr/local/bin/ && rm  eksctl_Linux_amd64.tar.gz
-    EOT
+    command = "wget https://amazon-eks.s3.us-west-2.amazonaws.com/1.20.4/2021-04-12/bin/linux/amd64/kubectl && chmod +x ./kubectl &&  mv ./kubectl /usr/local/bin/ && wget https://github.com/eksctl-io/eksctl/releases/download/v0.180.0/eksctl_Linux_amd64.tar.gz && tar xzf eksctl_Linux_amd64.tar.gz && chmod +x ./eksctl &&  mv ./eksctl /usr/local/bin/ && rm  eksctl_Linux_amd64.tar.gz"
   }
 }
-resource "null_resource" "create_eks_cluster" {
+
+# Create EKS cluster
+resource "aws_eks_cluster" "nodeproject_cluster" {
+  name     = "${var.project}-${var.env}-Cluster"
+  version  = "1.29"
+  role_arn = "arn:aws:iam::905418455397:role/aws-service-role/eks.amazonaws.com/AWSServiceRoleForAmazonEKS"
+
+vpc_config {
+    subnet_ids         = [module.vpc.private1,module.vpc.private2]
+    security_group_ids = [aws_security_group.frontend-sg.id]
+    endpoint_public_access = true
+    public_access_cidrs = ["0.0.0.0/0"]
+  }
+
+}
+
+
+#Example IAM Role for EKS Fargate Profile
+
+resource "aws_iam_role" "fargate_role" {
+  name = "eks-fargate-profile"
+
+  assume_role_policy = jsonencode({
+    Statement = [{
+      Action = "sts:AssumeRole"
+      Effect = "Allow"
+      Principal = {
+        Service = "eks-fargate-pods.amazonaws.com"
+      }
+    }]
+    Version = "2012-10-17"
+  })
+}
+
+resource "aws_iam_role_policy_attachment" "AmazonEKSFargatePodExecutionRolePolicy" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSFargatePodExecutionRolePolicy"
+  role       = aws_iam_role.fargate_role.name
+}
+resource "aws_eks_fargate_profile" "fargate_profile" {
+  cluster_name           = aws_eks_cluster.nodeproject_cluster.name
+  fargate_profile_name   = "${var.project}-${var.env}-Fargate-Profile"
+  pod_execution_role_arn = aws_iam_role.fargate_role.arn
+  subnet_ids             = [module.vpc.private1,module.vpc.private2]
+
+  selector {
+    namespace = "${var.project}-${var.env}"
+  }
+}
+resource "null_resource" "update_kube_config" {
   provisioner "local-exec" {
-    command = <<-EOT
-      eksctl create cluster --name demo-cluster --version 1.29 --region ${var.region} --fargate
-      aws eks update-kubeconfig --name demo-cluster --region ${var.region}
-    EOT
+    command = "aws eks update-kubeconfig --name ${var.project}-${var.env}-Cluster --region ap-southeast-2"
   }
-  depends_on = [null_resource.install_kubectl_eksctl]
 }
-resource "null_resource" "create_fargate_profile" {
+
+# Deploy Sample App
+resource "null_resource" "sample_app" {
   provisioner "local-exec" {
-    command = <<-EOT
-      eksctl create fargateprofile --cluster demo-cluster --region ${var.region} --name alb-sample-app --namespace game-2048
-    EOT
+    command = "kubectl apply -f deployment.yaml"
   }
-  depends_on = [null_resource.create_eks_cluster]
+  depends_on = [aws_eks_cluster.nodeproject_cluster, null_resource.install_kubectl_eksctl]
 }
-resource "null_resource" "deploy_2048_app" {
-  provisioner "local-exec" {
-    command = <<-EOT
-      kubectl apply -f https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.5.4/docs/examples/2048/2048_full.yaml
-    EOT
-  }
-  depends_on = [null_resource.create_fargate_profile]
-}
+
 resource "null_resource" "configure_iam_oidc_provider" {
   provisioner "local-exec" {
     command = <<-EOT
-      export cluster_name=demo-cluster
-      oidc_id=$(aws eks describe-cluster --name $cluster_name  --query "cluster.identity.oidc.issuer" --output text | cut -d '/' -f 5)
+      export cluster_name=${var.project}-${var.env}-Cluster
+      oidc_id=$(aws eks describe-cluster --name $cluster_name --query "cluster.identity.oidc.issuer" --output text | cut -d '/' -f 5)
       if ! aws iam list-open-id-connect-providers | grep -q $oidc_id; then
         eksctl utils associate-iam-oidc-provider --cluster $cluster_name --approve
       fi
     EOT
   }
-  depends_on = [null_resource.create_eks_cluster]
-}
-resource "null_resource" "setup_alb_controller" {
-  provisioner "local-exec" {
-    command = <<-EOT
-      curl -O https://raw.githubusercontent.com/kubernetes-sigs/aws-load-balancer-controller/v2.5.4/docs/install/iam_policy.json
-      aws iam create-policy --policy-name AWSLoadBalancerControllerIAMPolicy --policy-document file://iam_policy.json
-      eksctl create iamserviceaccount --cluster=demo-cluster --namespace=kube-system --name=aws-load-balancer-controller --role-name AmazonEKSLoadBalancerControllerRole --attach-policy-arn=arn:aws:iam::${data.aws_caller_identity.current.account_id}:policy/AWSLoadBalancerControllerIAMPolicy --approve
-      helm repo add eks https://aws.github.io/eks-charts
-      helm repo update eks
-      helm install aws-load-balancer-controller eks/aws-load-balancer-controller --namespace kube-system --set clusterName=demo-cluster --set serviceAccount.create=false --set serviceAccount.name=aws-load-balancer-controller --set region=${var.region} --set vpcId=${module.vpc.vpc_id}
-    EOT
-  }
-  depends_on = [null_resource.configure_iam_oidc_provider]
+  depends_on = [aws_eks_cluster.nodeproject_cluster]
 }
 
+# Create IAM policy for ALB controller
+resource "aws_iam_policy" "aws_load_balancer_controller_policy" {
+  name        = "AWSLoadBalancerControllerIAMPolicy1"
+  description = "IAM policy for AWS Load Balancer Controller"
+  
+  policy = file("${path.module}/iam_policy.json")
+}
+# Create IAM role for ALB controller
+resource "aws_iam_role" "eks_cluster_service_role" {
+  name = "AmazonEKSLoadBalancerControllerRole"
+
+  assume_role_policy = jsonencode({
+    Version = "2012-10-17",
+    Statement = [
+      {
+        Effect = "Allow",
+        Principal = {
+          Service = "eks.amazonaws.com"
+        },
+        Action = "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+# Attach IAM policy to ALB controller role
+resource "aws_iam_role_policy_attachment" "aws_load_balancer_controller_policy_attachment" {
+  role       = aws_iam_role.eks_cluster_service_role.name
+  policy_arn = aws_iam_policy.aws_load_balancer_controller_policy.arn
+}
+
+resource "null_resource" "helm_repo_add" {
+  provisioner "local-exec" {
+    command = "helm repo add eks https://aws.github.io/eks-charts"
+  }
+  #depends_on = [aws_eks_cluster.nodeproject_cluster, data.external.install_kubectl_eksctl]
+}
+
+
+
+# Install the AWS Load Balancer Controller using Helm
+resource "helm_release" "aws_load_balancer_controller" {
+  name       = "aws-load-balancer-controller"
+  repository = "https://aws.github.io/eks-charts"
+  chart      = "aws-load-balancer-controller"
+  namespace  = "kube-system"
+  set {
+    name  = "clusterName"
+    value = "${var.project}-${var.env}-Cluster"
+  }
+  set {
+    name  = "serviceAccount.create"
+    value = "false"
+  }
+  set {
+    name  = "serviceAccount.name"
+    value = "aws-load-balancer-controller"
+  }
+  set {
+    name  = "region"
+    value = var.region
+  }
+  set {
+    name  = "vpcId"
+    value = module.vpc.vpc_id
+  }
+}

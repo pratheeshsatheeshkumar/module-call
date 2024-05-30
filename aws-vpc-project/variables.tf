@@ -48,14 +48,19 @@ variable "nodeproject-private1-config" {
   type = map(any)
   default = {
     cidr = "172.17.128.0/18"
-    az   = "ap-southeast-2c"
+    az   = "ap-southeast-2a"
   }
 }
-
-
+variable "nodeproject-private2-config" {
+  type = map(any)
+  default = {
+    cidr = "172.17.192.0/18"
+    az   = "ap-southeast-2b"
+  }
+}
 variable "ports" {
   type    = list(string)
-  default = [80, 23, 24, 443, 22]
+  default = [80, 443, 22]
 
 }
 
