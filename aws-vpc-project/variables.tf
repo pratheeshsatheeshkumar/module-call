@@ -1,5 +1,5 @@
 variable "project" {
-  default     = "nodeProject"
+  default     = "nodeproject"
   description = "name of the project"
 
 }

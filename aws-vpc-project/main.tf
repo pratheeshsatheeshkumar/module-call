@@ -13,7 +13,7 @@ module "vpc" {
     cidr = var.nodeproject-private1-config.cidr
     az   = var.nodeproject-private1-config.az
   }
-    subnet-public2-config = {
+  subnet-public2-config = {
     cidr = var.nodeproject-public2-config.cidr
     az   = var.nodeproject-public2-config.az
   }
@@ -37,12 +37,21 @@ resource "tls_private_key" "rsa" {
 */
 /*===Imported public key to aws and saved private key localy using a provisioner===*/
 
+data "aws_key_pair" "existing_key_pair" {
+  key_name = "${var.project}-${var.env}-keypair"
+}
+
 resource "aws_key_pair" "aws-keypair" {
+  # Only create the key pair if it doesn't already exist
+  count = length(data.aws_key_pair.existing_key_pair) == 0 ? 1 : 0
+
   key_name   = "${var.project}-${var.env}-keypair"
   public_key = tls_private_key.rsa.public_key_openssh
+
   provisioner "local-exec" {
     command = "echo \"${tls_private_key.rsa.private_key_pem}\" > ./aws_key.pem ; chmod 400 ./aws_key.pem"
   }
+
   tags = {
     "Name" = "${var.project}-${var.env}-keypair"
   }
@@ -199,20 +208,46 @@ resource "null_resource" "install_kubectl_eksctl" {
   }
 }
 
-# Create EKS cluster
+resource "aws_iam_role" "AWS_EKS_role" {
+  name = "AWServiceRoleForAmazonEKS-custom-role"
+  assume_role_policy = jsonencode({
+    "Version" : "2012-10-17",
+    "Statement" : [
+      {
+        "Effect" : "Allow",
+        "Principal": {
+          "Service": "eks.amazonaws.com"
+        },
+        "Action" : "sts:AssumeRole"
+      }
+    ]
+  })
+}
+
+resource "aws_iam_policy" "AWS-EKS-custom-rolepolicy" {
+  name        = "AWServiceRoleForAmazonEKS-custom-policy"
+  policy = file("${path.module}/iam_eks_policy.json")
+}
+
+resource "aws_iam_role_policy_attachment" "role_policy" {
+  role       = "AWServiceRoleForAmazonEKS-custom-role"
+  policy_arn = aws_iam_policy.AWS-EKS-custom-rolepolicy.arn
+}
+
+
 resource "aws_eks_cluster" "nodeproject_cluster" {
   name     = "${var.project}-${var.env}-Cluster"
   version  = "1.29"
   role_arn = "arn:aws:iam::905418455397:role/aws-service-role/eks.amazonaws.com/AWSServiceRoleForAmazonEKS"
 
-vpc_config {
-    subnet_ids         = [module.vpc.private1,module.vpc.private2]
-    security_group_ids = [aws_security_group.frontend-sg.id]
+  vpc_config {
+    subnet_ids             = [module.vpc.private1, module.vpc.private2]
+    security_group_ids     = [aws_security_group.frontend-sg.id]
     endpoint_public_access = true
-    public_access_cidrs = ["0.0.0.0/0"]
+    public_access_cidrs    = ["0.0.0.0/0"]
   }
-
 }
+
 
 
 #Example IAM Role for EKS Fargate Profile
@@ -236,22 +271,47 @@ resource "aws_iam_role_policy_attachment" "AmazonEKSFargatePodExecutionRolePolic
   policy_arn = "arn:aws:iam::aws:policy/AmazonEKSFargatePodExecutionRolePolicy"
   role       = aws_iam_role.fargate_role.name
 }
-resource "aws_eks_fargate_profile" "fargate_profile" {
-  cluster_name           = aws_eks_cluster.nodeproject_cluster.name
-  fargate_profile_name   = "${var.project}-${var.env}-Fargate-Profile"
-  pod_execution_role_arn = aws_iam_role.fargate_role.arn
-  subnet_ids             = [module.vpc.private1,module.vpc.private2]
-
-  selector {
-    namespace = "${var.project}-${var.env}"
+/*resource "kubernetes_namespace" "namespace" {
+  metadata {
+    name = "${var.project}-${var.env}"
+    labels = {
+      Environment = "${var.env}"
+      Owner       = "DevOps"
+    }
   }
+
 }
+*/
+
+
+
 resource "null_resource" "update_kube_config" {
   provisioner "local-exec" {
     command = "aws eks update-kubeconfig --name ${var.project}-${var.env}-Cluster --region ap-southeast-2"
   }
 }
 
+resource "null_resource" "fargate_profile_create" {
+  provisioner "local-exec" {
+    command = "eksctl create fargateprofile --cluster ${var.project}-${var.env}-Cluster  --region ap-southeast-2 --name  ${var.project}-${var.env}-Fargate-Profile --namespace ${var.project}-${var.env}"
+  }
+    depends_on = [aws_eks_cluster.nodeproject_cluster, null_resource.update_kube_config]
+}
+
+
+
+/*resource "aws_eks_fargate_profile" "fargate_profile" {
+  cluster_name           = aws_eks_cluster.nodeproject_cluster.name
+  fargate_profile_name   = "${var.project}-${var.env}-Fargate-Profile"
+  pod_execution_role_arn = aws_iam_role.fargate_role.arn
+  subnet_ids             = [module.vpc.private1, module.vpc.private2]
+
+  selector {
+    namespace = "${var.project}-${var.env}"
+  }
+  depends_on = [aws_eks_cluster.nodeproject_cluster, null_resource.update_kube_config]
+}
+*/
 # Deploy Sample App
 resource "null_resource" "sample_app" {
   provisioner "local-exec" {
@@ -277,9 +337,18 @@ resource "null_resource" "configure_iam_oidc_provider" {
 resource "aws_iam_policy" "aws_load_balancer_controller_policy" {
   name        = "AWSLoadBalancerControllerIAMPolicy1"
   description = "IAM policy for AWS Load Balancer Controller"
-  
+
   policy = file("${path.module}/iam_policy.json")
 }
+
+resource "null_resource" "update_kube_config1" {
+  provisioner "local-exec" {
+    command = "aws eks update-kubeconfig --name ${var.project}-${var.env}-Cluster --region ap-southeast-2"
+  }
+}
+
+
+
 # Create IAM role for ALB controller
 resource "aws_iam_role" "eks_cluster_service_role" {
   name = "AmazonEKSLoadBalancerControllerRole"
@@ -300,7 +369,7 @@ resource "aws_iam_role" "eks_cluster_service_role" {
 
 # Attach IAM policy to ALB controller role
 resource "aws_iam_role_policy_attachment" "aws_load_balancer_controller_policy_attachment" {
-  role       = aws_iam_role.eks_cluster_service_role.name
+  role       = "AmazonEKSLoadBalancerControllerRole"
   policy_arn = aws_iam_policy.aws_load_balancer_controller_policy.arn
 }
 
@@ -315,6 +384,7 @@ resource "null_resource" "helm_repo_add" {
 
 # Install the AWS Load Balancer Controller using Helm
 resource "helm_release" "aws_load_balancer_controller" {
+  provider   = helm
   name       = "aws-load-balancer-controller"
   repository = "https://aws.github.io/eks-charts"
   chart      = "aws-load-balancer-controller"
@@ -339,4 +409,5 @@ resource "helm_release" "aws_load_balancer_controller" {
     name  = "vpcId"
     value = module.vpc.vpc_id
   }
+  depends_on = [aws_eks_cluster.nodeproject_cluster, null_resource.update_kube_config1]
 }

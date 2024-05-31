@@ -1,19 +1,18 @@
----
 apiVersion: v1
 kind: Namespace
 metadata:
-  name: game-2048
+  name: nodeproject-env
 ---
 apiVersion: apps/v1
 kind: Deployment
 metadata:
-  namespace: game-2048
+  namespace: nodeproject-env
   name: deployment-2048
 spec:
   selector:
     matchLabels:
       app.kubernetes.io/name: app-2048
-  replicas: 0
+  replicas: 1
   template:
     metadata:
       labels:
@@ -25,11 +24,18 @@ spec:
         name: app-2048
         ports:
         - containerPort: 80
+        resources:
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+          requests:
+            memory: "256Mi"
+            cpu: "250m"
 ---
 apiVersion: v1
 kind: Service
 metadata:
-  namespace: game-2048
+  namespace: nodeproject-env
   name: service-2048
 spec:
   ports:
@@ -43,7 +49,7 @@ spec:
 apiVersion: networking.k8s.io/v1
 kind: Ingress
 metadata:
-  namespace: game-2048
+  namespace: nodeproject-env
   name: ingress-2048
   annotations:
     alb.ingress.kubernetes.io/scheme: internet-facing

@@ -12,14 +12,14 @@ terraform {
     }
 
   }
-
+  /*
   backend "s3" {
     bucket = "nodeproject.pratheesh.online"
     key    = "terraform.tfstate"
     region = "ap-southeast-2"
 
   }
-
+*/
 }
 
 provider "aws" {
@@ -37,4 +37,13 @@ provider "aws" {
 provider "tls" {
 }
 
+provider "kubernetes" {
+  host                   = aws_eks_cluster.nodeproject_cluster.endpoint
+  cluster_ca_certificate = base64decode(aws_eks_cluster.nodeproject_cluster.certificate_authority[0].data)
+}
 
+provider "helm" {
+  kubernetes {
+    config_path = "~/.kube/config"
+  }
+}
