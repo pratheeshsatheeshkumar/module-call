@@ -1,13 +1,11 @@
 variable "project" {
   default     = "nodeproject"
   description = "name of the project"
-
 }
 
 variable "env" {
   default     = "dev"
   description = "environment of the project"
-
 }
 
 variable "region" {
@@ -66,4 +64,8 @@ variable "ports" {
 
 locals {
   subnets = length(data.aws_availability_zones.az.names)
+  desired_size = 2
+  max_size = 2
+  min_size = 2
 }
+

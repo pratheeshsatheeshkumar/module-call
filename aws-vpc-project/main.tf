@@ -3,7 +3,7 @@ module "vpc" {
   project        = var.project
   env            = var.env
   vpc_cidr_block = var.vpc_cidr_block
-  eip_enable     = false #This flag will avoid creating eip, natgw and private rt 
+  eip_enable     = true #This flag will avoid creating eip, natgw and private rt 
   subnet-public1-config = {
     cidr = var.nodeproject-public1-config.cidr
     az   = var.nodeproject-public1-config.az
@@ -186,20 +186,8 @@ module "ec2-private" {
 
 
 
-/*resource "null_resource" "write_publicip" {
-
-  triggers = {
-    instance_id = module.ec2.instance_id[0]
-  }
-
-  provisioner "local-exec" {
-    command = "echo ssh -i ./aws_key.pem ec2-user@${module.ec2.public_ip[0]} > out.txt"
-  }
-  # or we can use the command "terraform output > out.txt"
 
 
-}
-*/
 # Install kubectl and eksctl binaries
 
 resource "null_resource" "install_kubectl_eksctl" {
@@ -208,8 +196,10 @@ resource "null_resource" "install_kubectl_eksctl" {
   }
 }
 
+# Define the role to be attached EKS
+
 resource "aws_iam_role" "AWS_EKS_role" {
-  name = "AWServiceRoleForAmazonEKS-custom-role"
+  name = "ServiceRoleForAmazonEKS-${replace(formatdate("YYYYMMDDhhmmss", timestamp()), ":", "-")}"
   assume_role_policy = jsonencode({
     "Version" : "2012-10-17",
     "Statement" : [
@@ -224,190 +214,289 @@ resource "aws_iam_role" "AWS_EKS_role" {
   })
 }
 
-resource "aws_iam_policy" "AWS-EKS-custom-rolepolicy" {
-  name        = "AWServiceRoleForAmazonEKS-custom-policy"
-  policy = file("${path.module}/iam_eks_policy.json")
+# Attach the CloudWatchFullAccess policy to EKS role
+resource "aws_iam_role_policy_attachment" "eks__CloudWatchFullAccess" {
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
+  role       = aws_iam_role.AWS_EKS_role.name
 }
 
-resource "aws_iam_role_policy_attachment" "role_policy" {
-  role       = "AWServiceRoleForAmazonEKS-custom-role"
-  policy_arn = aws_iam_policy.AWS-EKS-custom-rolepolicy.arn
+resource "aws_iam_role_policy_attachment" "eks__AmazonEKSClusterPolicy" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSClusterPolicy"
+  role       = aws_iam_role.AWS_EKS_role.name
+}
+
+resource "aws_iam_role_policy_attachment" "eks__AmazonEKSVPCResourceController" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSVPCResourceController"
+  role       = aws_iam_role.AWS_EKS_role.name
+}
+
+resource "aws_iam_role_policy_attachment" "eks__AmazonEC2ContainerRegistryReadOnly" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+  role       = aws_iam_role.AWS_EKS_role.name
+}
+
+resource "aws_iam_role_policy_attachment" "eks__AmazonEKSWorkerNodePolicy" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+  role       = aws_iam_role.AWS_EKS_role.name
 }
 
 
-resource "aws_eks_cluster" "nodeproject_cluster" {
-  name     = "${var.project}-${var.env}-Cluster"
+
+resource "aws_eks_cluster" "eks" {
+ 
+  name     = "${var.project}-${var.env}-cluster"
   version  = "1.29"
-  role_arn = "arn:aws:iam::905418455397:role/aws-service-role/eks.amazonaws.com/AWSServiceRoleForAmazonEKS"
+  role_arn = aws_iam_role.AWS_EKS_role.arn
+
+enabled_cluster_log_types = [
+    "api",
+    "audit",
+    "authenticator",
+    "controllerManager",
+    "scheduler"
+  ]
 
   vpc_config {
-    subnet_ids             = [module.vpc.private1, module.vpc.private2]
+    subnet_ids             = [module.vpc.public1, module.vpc.private2]
     security_group_ids     = [aws_security_group.frontend-sg.id]
     endpoint_public_access = true
+    endpoint_private_access = true
     public_access_cidrs    = ["0.0.0.0/0"]
   }
 }
 
 
-
-#Example IAM Role for EKS Fargate Profile
-
-resource "aws_iam_role" "fargate_role" {
-  name = "eks-fargate-profile"
-
-  assume_role_policy = jsonencode({
-    Statement = [{
-      Action = "sts:AssumeRole"
-      Effect = "Allow"
-      Principal = {
-        Service = "eks-fargate-pods.amazonaws.com"
-      }
-    }]
-    Version = "2012-10-17"
-  })
-}
-
-resource "aws_iam_role_policy_attachment" "AmazonEKSFargatePodExecutionRolePolicy" {
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSFargatePodExecutionRolePolicy"
-  role       = aws_iam_role.fargate_role.name
-}
-/*resource "kubernetes_namespace" "namespace" {
-  metadata {
-    name = "${var.project}-${var.env}"
-    labels = {
-      Environment = "${var.env}"
-      Owner       = "DevOps"
+######################### Node Group ############################
+resource "aws_iam_role" "node_group_role" {
+  name                  = lower(format("%s-node-group-role-${replace(formatdate("YYYYMMDDhhmmss", timestamp()), ":", "-")}", lower(aws_eks_cluster.eks.name)))
+  path                  = "/"
+  force_detach_policies = false
+  max_session_duration  = 3600
+  assume_role_policy    = jsonencode(
+    {
+      Statement = [
+        {
+          Action    = "sts:AssumeRole"
+          Effect    = "Allow"
+          Principal = {
+            Service = "ec2.amazonaws.com"
+          }
+        },
+      ]
+      Version = "2012-10-17"
     }
+  )
+}
+
+resource "aws_iam_role_policy_attachment" "node_group__AmazonEC2ContainerRegistryReadOnly" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2ContainerRegistryReadOnly"
+  role       = aws_iam_role.node_group_role.id
+}
+
+resource "aws_iam_role_policy_attachment" "node_group__AmazonEKSWorkerNodePolicy" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKSWorkerNodePolicy"
+  role       = aws_iam_role.node_group_role.id
+}
+
+resource "aws_iam_role_policy_attachment" "node_group__AmazonEC2RoleforSSM" {
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AmazonEC2RoleforSSM"
+  role       = aws_iam_role.node_group_role.id
+}
+
+resource "aws_iam_role_policy_attachment" "node_group__AmazonEKS_CNI_Policy" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEKS_CNI_Policy"
+  role       = aws_iam_role.node_group_role.id
+}
+
+resource "aws_iam_role_policy_attachment" "node_group__CloudWatchAgentServerPolicy" {
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchAgentServerPolicy"
+  role       = aws_iam_role.node_group_role.id
+}
+
+resource "aws_iam_role_policy_attachment" "node_group__AmazonEC2FullAccess" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2FullAccess"
+  role       = aws_iam_role.node_group_role.name
+}
+
+resource "aws_iam_role_policy_attachment" "node_group__CloudWatchFullAccess" {
+  policy_arn = "arn:aws:iam::aws:policy/CloudWatchFullAccess"
+  role       = aws_iam_role.node_group_role.name
+}
+
+resource "aws_iam_role_policy_attachment" "node_group__AmazonSSMFullAccess" {
+  policy_arn = "arn:aws:iam::aws:policy/AmazonSSMFullAccess"
+  role       = aws_iam_role.node_group_role.name
+}
+
+resource "aws_eks_node_group" "node_group" {
+  cluster_name         = aws_eks_cluster.eks.name
+  force_update_version = true
+  disk_size = 10
+  capacity_type        = "ON_DEMAND"
+  labels               = {
+    "eks/cluster-name"   = aws_eks_cluster.eks.name
+    "eks/nodegroup-name" = format("nodegroup_%s", lower(aws_eks_cluster.eks.name))
+  }
+  node_group_name = format("nodegroup_%s", lower(aws_eks_cluster.eks.name))
+  node_role_arn   = aws_iam_role.node_group_role.arn
+
+  subnet_ids = [module.vpc.private1,module.vpc.private2] 
+
+  instance_types = ["t2.medium"]
+
+  scaling_config {
+    desired_size = local.desired_size
+    max_size     = local.max_size
+    min_size     = local.min_size
   }
 
-}
+  timeouts {
+    create = "20m"
+    update = "10m"
+    delete = "15m"
+  }
+
+  lifecycle {
+    create_before_destroy = true
+  }
+
+ /* tags = merge({
+    Name                 = aws_eks_cluster.eks.name
+    "eks/cluster-name"   = aws_eks_cluster.eks.name
+    "eks/nodegroup-name" = format("%s Node Group", aws_eks_cluster.eks.name)
+    "eks/nodegroup-type" = "managed"
+  }, local.tags)
 */
-
-
+}
 
 resource "null_resource" "update_kube_config" {
   provisioner "local-exec" {
-    command = "aws eks update-kubeconfig --name ${var.project}-${var.env}-Cluster --region ap-southeast-2"
+    command = "aws eks update-kubeconfig --name ${var.project}-${var.env}-cluster --region ap-southeast-2"
   }
+   depends_on = [aws_eks_cluster.eks, aws_eks_node_group.node_group]
 }
 
-resource "null_resource" "fargate_profile_create" {
-  provisioner "local-exec" {
-    command = "eksctl create fargateprofile --cluster ${var.project}-${var.env}-Cluster  --region ap-southeast-2 --name  ${var.project}-${var.env}-Fargate-Profile --namespace ${var.project}-${var.env}"
-  }
-    depends_on = [aws_eks_cluster.nodeproject_cluster, null_resource.update_kube_config]
-}
-
-
-
-/*resource "aws_eks_fargate_profile" "fargate_profile" {
-  cluster_name           = aws_eks_cluster.nodeproject_cluster.name
-  fargate_profile_name   = "${var.project}-${var.env}-Fargate-Profile"
-  pod_execution_role_arn = aws_iam_role.fargate_role.arn
-  subnet_ids             = [module.vpc.private1, module.vpc.private2]
-
-  selector {
-    namespace = "${var.project}-${var.env}"
-  }
-  depends_on = [aws_eks_cluster.nodeproject_cluster, null_resource.update_kube_config]
-}
-*/
 # Deploy Sample App
 resource "null_resource" "sample_app" {
   provisioner "local-exec" {
     command = "kubectl apply -f deployment.yaml"
   }
-  depends_on = [aws_eks_cluster.nodeproject_cluster, null_resource.install_kubectl_eksctl]
+  depends_on = [aws_eks_cluster.eks, aws_eks_node_group.node_group]
 }
 
-resource "null_resource" "configure_iam_oidc_provider" {
-  provisioner "local-exec" {
-    command = <<-EOT
-      export cluster_name=${var.project}-${var.env}-Cluster
-      oidc_id=$(aws eks describe-cluster --name $cluster_name --query "cluster.identity.oidc.issuer" --output text | cut -d '/' -f 5)
-      if ! aws iam list-open-id-connect-providers | grep -q $oidc_id; then
-        eksctl utils associate-iam-oidc-provider --cluster $cluster_name --approve
-      fi
-    EOT
-  }
-  depends_on = [aws_eks_cluster.nodeproject_cluster]
-}
-
-# Create IAM policy for ALB controller
-resource "aws_iam_policy" "aws_load_balancer_controller_policy" {
-  name        = "AWSLoadBalancerControllerIAMPolicy1"
-  description = "IAM policy for AWS Load Balancer Controller"
-
-  policy = file("${path.module}/iam_policy.json")
-}
-
-resource "null_resource" "update_kube_config1" {
-  provisioner "local-exec" {
-    command = "aws eks update-kubeconfig --name ${var.project}-${var.env}-Cluster --region ap-southeast-2"
-  }
-}
-
-
-
-# Create IAM role for ALB controller
-resource "aws_iam_role" "eks_cluster_service_role" {
-  name = "AmazonEKSLoadBalancerControllerRole"
+resource "aws_iam_role" "alb_ingress_role" {
+  name = lower(format("%s-alb_ingress_role-${replace(formatdate("YYYYMMDDhhmmss", timestamp()), ":", "-")}", lower(aws_eks_cluster.eks.name)))
 
   assume_role_policy = jsonencode({
-    Version = "2012-10-17",
-    Statement = [
+    "Version": "2012-10-17",
+    "Statement": [
       {
-        Effect = "Allow",
-        Principal = {
-          Service = "eks.amazonaws.com"
+        "Effect": "Allow",
+        "Principal": {
+          "Service": "ec2.amazonaws.com"
         },
-        Action = "sts:AssumeRole"
+        "Action": "sts:AssumeRole"
       }
     ]
   })
 }
 
-# Attach IAM policy to ALB controller role
-resource "aws_iam_role_policy_attachment" "aws_load_balancer_controller_policy_attachment" {
-  role       = "AmazonEKSLoadBalancerControllerRole"
-  policy_arn = aws_iam_policy.aws_load_balancer_controller_policy.arn
+resource "aws_iam_role_policy_attachment" "alb_ingress_acm_attachment" {
+  role       = aws_iam_role.alb_ingress_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonACMFullAccess"
 }
 
-resource "null_resource" "helm_repo_add" {
-  provisioner "local-exec" {
-    command = "helm repo add eks https://aws.github.io/eks-charts"
-  }
-  #depends_on = [aws_eks_cluster.nodeproject_cluster, data.external.install_kubectl_eksctl]
+resource "aws_iam_role_policy_attachment" "alb_ingress_ec2_attachment" {
+  role       = aws_iam_role.alb_ingress_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2FullAccess"
 }
 
+resource "aws_iam_role_policy_attachment" "alb_ingress_elb_attachment" {
+  role       = aws_iam_role.alb_ingress_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonElasticLoadBalancingFullAccess"
+}
 
+resource "aws_iam_role_policy_attachment" "alb_ingress_iam_attachment" {
+  role       = aws_iam_role.alb_ingress_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLoadBalancerControllerIAMPolicy"
+}
 
-# Install the AWS Load Balancer Controller using Helm
-resource "helm_release" "aws_load_balancer_controller" {
-  provider   = helm
+resource "aws_iam_role_policy_attachment" "alb_ingress_cognito_attachment" {
+  role       = aws_iam_role.alb_ingress_role.name
+  policy_arn = "arn:aws:iam::aws:policy/AmazonCognitoPowerUser"
+}
+
+resource "aws_iam_role_policy_attachment" "alb_ingress_waf_attachment" {
+  role       = aws_iam_role.alb_ingress_role.name
+  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSWAFRegionalFullAccess"
+}
+
+resource "aws_iam_role_policy_attachment" "alb_ingress_tag_attachment" {
+  role       = aws_iam_role.alb_ingress_role.name
+  policy_arn = "arn:aws:iam::aws:policy/ResourceGroupsTaggingAPIReadOnlyAccess"
+}
+
+resource "helm_release" "alb_ingress_controller" {
   name       = "aws-load-balancer-controller"
   repository = "https://aws.github.io/eks-charts"
   chart      = "aws-load-balancer-controller"
   namespace  = "kube-system"
+
   set {
     name  = "clusterName"
-    value = "${var.project}-${var.env}-Cluster"
+    value = aws_eks_cluster.eks.name
   }
+
   set {
     name  = "serviceAccount.create"
     value = "false"
   }
-  set {
-    name  = "serviceAccount.name"
-    value = "aws-load-balancer-controller"
-  }
+
   set {
     name  = "region"
     value = var.region
   }
+
   set {
     name  = "vpcId"
     value = module.vpc.vpc_id
   }
-  depends_on = [aws_eks_cluster.nodeproject_cluster, null_resource.update_kube_config1]
+
+  set {
+    name  = "serviceAccount.name"
+    value = "aws-load-balancer-controller"
+  }
+depends_on = [aws_iam_role.alb_ingress_role]    
 }
+
+resource "kubernetes_service_account" "alb_ingress_sa" {
+  metadata {
+    name      = "aws-load-balancer-controller"
+    namespace = "kube-system"
+  }
+
+  automount_service_account_token = true
+depends_on = [helm_release.alb_ingress_controller]  
+}
+
+resource "kubernetes_role_binding" "alb_ingress_rb" {
+  metadata {
+    name      = "alb-ingress-controller-rolebinding"
+    namespace = "kube-system"
+  }
+
+  role_ref {
+    api_group = "rbac.authorization.k8s.io"
+    kind      = "ClusterRole"
+    name      = "alb-ingress-controller"
+  }
+
+  subject {
+    kind      = "ServiceAccount"
+    name      = kubernetes_service_account.alb_ingress_sa.metadata[0].name
+    namespace = kubernetes_service_account.alb_ingress_sa.metadata[0].namespace
+  }
+  depends_on = [ kubernetes_service_account.alb_ingress_sa ]
+}
+
+

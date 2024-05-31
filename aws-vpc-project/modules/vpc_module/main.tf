@@ -129,3 +129,9 @@ resource "aws_route_table_association" "nodeproject-rt_subnet-assoc3" {
   subnet_id      = aws_subnet.private1.id
   route_table_id = aws_route_table.nodeproject-rt-private[0].id
 }
+
+resource "aws_route_table_association" "nodeproject-rt_subnet-assoc4" {
+  count = var.eip_enable ? 1 : 0
+  subnet_id      = aws_subnet.private2.id
+  route_table_id = aws_route_table.nodeproject-rt-private[0].id
+}

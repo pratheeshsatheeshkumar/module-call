@@ -38,8 +38,8 @@ provider "tls" {
 }
 
 provider "kubernetes" {
-  host                   = aws_eks_cluster.nodeproject_cluster.endpoint
-  cluster_ca_certificate = base64decode(aws_eks_cluster.nodeproject_cluster.certificate_authority[0].data)
+  host                   = aws_eks_cluster.eks.endpoint
+  cluster_ca_certificate = base64decode(aws_eks_cluster.eks.certificate_authority[0].data)
 }
 
 provider "helm" {
