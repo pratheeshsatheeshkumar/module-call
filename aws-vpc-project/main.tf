@@ -375,17 +375,162 @@ resource "null_resource" "update_kube_config" {
   }
    depends_on = [aws_eks_cluster.eks, aws_eks_node_group.node_group]
 }
-
+/*
 # Deploy Sample App
 resource "null_resource" "sample_app" {
   provisioner "local-exec" {
     command = "kubectl apply -f deployment.yaml"
   }
-  depends_on = [aws_eks_cluster.eks, aws_eks_node_group.node_group]
+  depends_on = [ aws_eks_node_group.node_group]
+}
+*/
+# ACM Policy
+resource "aws_iam_policy" "alb_ingress_acm_policy" {
+  name        = "AmazonACMFullAccess-${lower(aws_eks_cluster.eks.name)}"
+  path        = "/"
+  description = "Amazon ACM Full Access policy for ALB ingress"
+
+  policy = jsonencode({
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": "acm:*",
+        "Resource": "*"
+      }
+    ]
+  })
 }
 
+# EC2 Policy
+resource "aws_iam_policy" "alb_ingress_ec2_policy" {
+  name        = "AmazonEC2FullAccess-${lower(aws_eks_cluster.eks.name)}"
+  path        = "/"
+  description = "Amazon EC2 Full Access policy for ALB ingress"
+
+  policy = jsonencode({
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": "ec2:*",
+        "Resource": "*"
+      }
+    ]
+  })
+}
+
+# ELB Policy
+resource "aws_iam_policy" "alb_ingress_elb_policy" {
+  name        = "AmazonElasticLoadBalancingFullAccess-${lower(aws_eks_cluster.eks.name)}"
+  path        = "/"
+  description = "Amazon Elastic Load Balancing Full Access policy for ALB ingress"
+
+  policy = jsonencode({
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": "elasticloadbalancing:*",
+        "Resource": "*"
+      }
+    ]
+  })
+}
+
+# IAM Policy for ALB Ingress
+resource "aws_iam_policy" "alb_ingress_iam_policy" {
+  name        = "AWSLoadBalancerControllerIAMPolicy-${lower(aws_eks_cluster.eks.name)}"
+  path        = "/"
+  description = "AWS Load Balancer Controller IAM Policy for ALB ingress"
+
+  policy = jsonencode({
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": [
+          "ec2:Describe*",
+          "elasticloadbalancing:*",
+          "iam:CreateServiceLinkedRole",
+          "iam:GetServerCertificate",
+          "iam:ListServerCertificates",
+          "cognito-idp:DescribeUserPoolClient",
+          "acm:ListCertificates",
+          "acm:DescribeCertificate",
+          "waf-regional:GetWebACLForResource",
+          "waf-regional:AssociateWebACL",
+          "waf-regional:DisassociateWebACL",
+          "tag:GetResources",
+          "tag:TagResources",
+          "waf:GetWebACL"
+        ],
+        "Resource": "*"
+      }
+    ]
+  })
+}
+
+# Cognito Policy
+resource "aws_iam_policy" "alb_ingress_cognito_policy" {
+  name        = "AmazonCognitoPowerUser-${lower(aws_eks_cluster.eks.name)}"
+  path        = "/"
+  description = "Amazon Cognito Power User policy for ALB ingress"
+
+  policy = jsonencode({
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": "cognito-idp:*",
+        "Resource": "*"
+      }
+    ]
+  })
+}
+
+# WAF Policy
+resource "aws_iam_policy" "alb_ingress_waf_policy" {
+  name        = "AWSWAFRegionalFullAccess-${lower(aws_eks_cluster.eks.name)}"
+  path        = "/"
+  description = "AWS WAF Regional Full Access policy for ALB ingress"
+
+  policy = jsonencode({
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": "waf-regional:*",
+        "Resource": "*"
+      }
+    ]
+  })
+}
+
+# Tagging API Policy
+resource "aws_iam_policy" "alb_ingress_tag_policy" {
+  name        = "ResourceGroupsTaggingAPIReadOnlyAccess-${lower(aws_eks_cluster.eks.name)}"
+  path        = "/"
+  description = "Resource Groups Tagging API Read-Only Access policy for ALB ingress"
+
+  policy = jsonencode({
+    "Version": "2012-10-17",
+    "Statement": [
+      {
+        "Effect": "Allow",
+        "Action": [
+          "tag:GetResources",
+          "tag:TagResources"
+        ],
+        "Resource": "*"
+      }
+    ]
+  })
+}
+
+# Create ALB ingress role
 resource "aws_iam_role" "alb_ingress_role" {
-  name = lower(format("%s-alb_ingress_role-${replace(formatdate("YYYYMMDDhhmmss", timestamp()), ":", "-")}", lower(aws_eks_cluster.eks.name)))
+  name = lower(format("%s-alb-ingress-role", aws_eks_cluster.eks.name))
 
   assume_role_policy = jsonencode({
     "Version": "2012-10-17",
@@ -401,41 +546,43 @@ resource "aws_iam_role" "alb_ingress_role" {
   })
 }
 
+# Attach policies to ALB ingress role
 resource "aws_iam_role_policy_attachment" "alb_ingress_acm_attachment" {
   role       = aws_iam_role.alb_ingress_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonACMFullAccess"
+  policy_arn = aws_iam_policy.alb_ingress_acm_policy.arn
 }
 
 resource "aws_iam_role_policy_attachment" "alb_ingress_ec2_attachment" {
   role       = aws_iam_role.alb_ingress_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonEC2FullAccess"
+  policy_arn = aws_iam_policy.alb_ingress_ec2_policy.arn
 }
 
 resource "aws_iam_role_policy_attachment" "alb_ingress_elb_attachment" {
   role       = aws_iam_role.alb_ingress_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonElasticLoadBalancingFullAccess"
+  policy_arn = aws_iam_policy.alb_ingress_elb_policy.arn
 }
 
 resource "aws_iam_role_policy_attachment" "alb_ingress_iam_attachment" {
   role       = aws_iam_role.alb_ingress_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSLoadBalancerControllerIAMPolicy"
+  policy_arn = aws_iam_policy.alb_ingress_iam_policy.arn
 }
 
 resource "aws_iam_role_policy_attachment" "alb_ingress_cognito_attachment" {
   role       = aws_iam_role.alb_ingress_role.name
-  policy_arn = "arn:aws:iam::aws:policy/AmazonCognitoPowerUser"
+  policy_arn = aws_iam_policy.alb_ingress_cognito_policy.arn
 }
 
 resource "aws_iam_role_policy_attachment" "alb_ingress_waf_attachment" {
   role       = aws_iam_role.alb_ingress_role.name
-  policy_arn = "arn:aws:iam::aws:policy/service-role/AWSWAFRegionalFullAccess"
+  policy_arn = aws_iam_policy.alb_ingress_waf_policy.arn
 }
 
 resource "aws_iam_role_policy_attachment" "alb_ingress_tag_attachment" {
   role       = aws_iam_role.alb_ingress_role.name
-  policy_arn = "arn:aws:iam::aws:policy/ResourceGroupsTaggingAPIReadOnlyAccess"
+  policy_arn = aws_iam_policy.alb_ingress_tag_policy.arn
 }
 
+# Create Helm release for ALB ingress controller
 resource "helm_release" "alb_ingress_controller" {
   name       = "aws-load-balancer-controller"
   repository = "https://aws.github.io/eks-charts"
@@ -466,9 +613,14 @@ resource "helm_release" "alb_ingress_controller" {
     name  = "serviceAccount.name"
     value = "aws-load-balancer-controller"
   }
-depends_on = [aws_iam_role.alb_ingress_role]    
+
+  depends_on = [
+    aws_iam_role.alb_ingress_role,
+    aws_eks_node_group.node_group
+  ]
 }
 
+# Create Service Account for ALB ingress
 resource "kubernetes_service_account" "alb_ingress_sa" {
   metadata {
     name      = "aws-load-balancer-controller"
@@ -476,9 +628,13 @@ resource "kubernetes_service_account" "alb_ingress_sa" {
   }
 
   automount_service_account_token = true
-depends_on = [helm_release.alb_ingress_controller]  
+
+  depends_on = [
+    aws_iam_role.alb_ingress_role
+  ]
 }
 
+# Role Binding for ALB ingress
 resource "kubernetes_role_binding" "alb_ingress_rb" {
   metadata {
     name      = "alb-ingress-controller-rolebinding"
@@ -496,7 +652,8 @@ resource "kubernetes_role_binding" "alb_ingress_rb" {
     name      = kubernetes_service_account.alb_ingress_sa.metadata[0].name
     namespace = kubernetes_service_account.alb_ingress_sa.metadata[0].namespace
   }
-  depends_on = [ kubernetes_service_account.alb_ingress_sa ]
+
+  depends_on = [
+    kubernetes_service_account.alb_ingress_sa
+  ]
 }
-
-
