@@ -187,15 +187,15 @@ module "ec2-private" {
 
 
 
-
+/*
 # Install kubectl and eksctl binaries
 
 resource "null_resource" "install_kubectl_eksctl" {
   provisioner "local-exec" {
-    command = "wget https://amazon-eks.s3.us-west-2.amazonaws.com/1.20.4/2021-04-12/bin/linux/amd64/kubectl && chmod +x ./kubectl &&  mv ./kubectl /usr/local/bin/ && wget https://github.com/eksctl-io/eksctl/releases/download/v0.180.0/eksctl_Linux_amd64.tar.gz && tar xzf eksctl_Linux_amd64.tar.gz && chmod +x ./eksctl &&  mv ./eksctl /usr/local/bin/ && rm  eksctl_Linux_amd64.tar.gz"
+    command = "wget https://amazon-eks.s3.us-west-2.amazonaws.com/1.20.4/2021-04-12/bin/linux/amd64/kubectl && chmod +x ./kubectl && sudo mv ./kubectl /usr/local/bin/ && wget https://github.com/eksctl-io/eksctl/releases/download/v0.180.0/eksctl_Linux_amd64.tar.gz && tar xzf eksctl_Linux_amd64.tar.gz && chmod +x ./eksctl && sudo mv ./eksctl /usr/local/bin/ && rm  eksctl_Linux_amd64.tar.gz"
   }
 }
-
+*/
 # Define the role to be attached EKS
 
 resource "aws_iam_role" "AWS_EKS_role" {
@@ -325,6 +325,11 @@ resource "aws_iam_role_policy_attachment" "node_group__CloudWatchFullAccess" {
 
 resource "aws_iam_role_policy_attachment" "node_group__AmazonSSMFullAccess" {
   policy_arn = "arn:aws:iam::aws:policy/AmazonSSMFullAccess"
+  role       = aws_iam_role.node_group_role.name
+}
+
+resource "aws_iam_role_policy_attachment" "node_group__AWSWAFReadOnlyAccess" {
+  policy_arn = "arn:aws:iam::aws:policy/AWSWAFReadOnlyAccess"
   role       = aws_iam_role.node_group_role.name
 }
 
@@ -613,6 +618,11 @@ resource "helm_release" "alb_ingress_controller" {
     name  = "serviceAccount.name"
     value = "aws-load-balancer-controller"
   }
+  set {
+    name  = "annotations.service.beta.kubernetes.io/aws-load-balancer-subnets"
+    value = module.vpc.public1 // Specify your public subnet IDs here
+  }
+
 
   depends_on = [
     aws_iam_role.alb_ingress_role,

@@ -25,6 +25,7 @@ resource "aws_subnet" "public1" {
 
   tags = {
     "Name" = "${var.project}-${var.env}-public1"
+     "kubernetes.io/role/elb" = "1"
   }
 }
 resource "aws_subnet" "public2" {
@@ -35,6 +36,7 @@ resource "aws_subnet" "public2" {
 
   tags = {
     "Name" = "${var.project}-${var.env}-public2"
+     "kubernetes.io/role/elb" = "1"
   }
 }
 
