@@ -365,13 +365,6 @@ resource "aws_eks_node_group" "node_group" {
     create_before_destroy = true
   }
 
- /* tags = merge({
-    Name                 = aws_eks_cluster.eks.name
-    "eks/cluster-name"   = aws_eks_cluster.eks.name
-    "eks/nodegroup-name" = format("%s Node Group", aws_eks_cluster.eks.name)
-    "eks/nodegroup-type" = "managed"
-  }, local.tags)
-*/
 }
 
 resource "null_resource" "update_kube_config" {
@@ -380,15 +373,7 @@ resource "null_resource" "update_kube_config" {
   }
    depends_on = [aws_eks_cluster.eks, aws_eks_node_group.node_group]
 }
-/*
-# Deploy Sample App
-resource "null_resource" "sample_app" {
-  provisioner "local-exec" {
-    command = "kubectl apply -f deployment.yaml"
-  }
-  depends_on = [ aws_eks_node_group.node_group]
-}
-*/
+
 # ACM Policy
 resource "aws_iam_policy" "alb_ingress_acm_policy" {
   name        = "AmazonACMFullAccess-${lower(aws_eks_cluster.eks.name)}"
